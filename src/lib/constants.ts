@@ -18,14 +18,8 @@ export const MAX_UPLOAD_SIZE = 2 * 1024 * 1024 * 1024;
 
 /**
  * Registered storage drives.
- * Customize this array to match your NAS drive configuration.
- * Each entry maps a Docker volume mount (under /data/) to a display name.
- *
- * Example: If you mount a single drive as /data/Photos in docker-compose.yml,
- * add: { id: "Photos", name: "Photos", path: "/data/Photos", description: "Photo storage", icon: "hdd" }
  */
 export const STORAGE_DRIVES: StorageDrive[] = [
-  // --- Example configuration (replace with your drives) ---
   {
     id: "HDD-001",
     name: "HDD-001",

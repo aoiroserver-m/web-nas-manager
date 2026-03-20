@@ -3,28 +3,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: web-nas-manager
+    container_name: web-nas-filemanager
     ports:
       - "3000:3000"
     volumes:
-      # Mount your NAS drives here.
-      # Format: <host_path>:/data/<drive_id>
-      # The <drive_id> must match the entries in src/lib/constants.ts STORAGE_DRIVES.
-      #
-      # Example (Windows):
-      #   - E:\:/data/HDD-001
-      #   - G:\:/data/SSD-001
-      #
-      # Example (Linux/Mac):
-      #   - /mnt/storage:/data/HDD-001
-      #   - /mnt/ssd:/data/SSD-001
-      #
-      # Using environment variables (set in .env or .env.local):
-      - ${DRIVE_1_PATH:?Set DRIVE_1_PATH in .env}:/data/HDD-001
-      - ${DRIVE_2_PATH:?Set DRIVE_2_PATH in .env}:/data/HDD-002
-      - ${DRIVE_3_PATH:?Set DRIVE_3_PATH in .env}:/data/SSD-001
-      - ${DRIVE_4_PATH:?Set DRIVE_4_PATH in .env}:/data/SSD-002
-      # Thumbnail cache (named volume)
+      # NASストレージのマウント（.envで環境変数を設定）
+      - ${HDD_001_PATH:-E:\}:/data/HDD-001
+      - ${HDD_002_PATH:-F:\}:/data/HDD-002
+      - ${SSD_001_PATH:-G:\}:/data/SSD-001
+      - ${SSD_002_PATH:-H:\}:/data/SSD-002
+      # サムネイルキャッシュ（named volume）
       - thumbnail-cache:/cache/thumbnails
     restart: unless-stopped
     environment:

@@ -123,16 +123,29 @@ export default function PhotoMapView({ currentPath, onPhotoClick }: PhotoMapView
 
         const marker = L.marker(latLng, { icon });
 
-        // ポップアップ
-        const popupContent = `
-          <div style="text-align:center;min-width:180px">
-            <img src="${photo.thumbnailUrl}" style="width:180px;height:120px;object-fit:cover;border-radius:6px;cursor:pointer" data-photo-path="${photo.path}" />
-            <div style="margin-top:6px;font-size:12px;font-weight:600">${photo.name}</div>
-            ${photo.takenAt ? `<div style="font-size:11px;color:#888">${new Date(photo.takenAt).toLocaleDateString("ja-JP")}</div>` : ""}
-          </div>
-        `;
+        // ポップアップ（XSS防止のためDOM APIで構築）
+        const popupEl = document.createElement("div");
+        popupEl.style.cssText = "text-align:center;min-width:180px";
 
-        marker.bindPopup(popupContent, { maxWidth: 220 });
+        const img = document.createElement("img");
+        img.src = photo.thumbnailUrl;
+        img.style.cssText = "width:180px;height:120px;object-fit:cover;border-radius:6px;cursor:pointer";
+        img.dataset.photoPath = photo.path;
+        popupEl.appendChild(img);
+
+        const nameEl = document.createElement("div");
+        nameEl.style.cssText = "margin-top:6px;font-size:12px;font-weight:600";
+        nameEl.textContent = photo.name;
+        popupEl.appendChild(nameEl);
+
+        if (photo.takenAt) {
+          const dateEl = document.createElement("div");
+          dateEl.style.cssText = "font-size:11px;color:#888";
+          dateEl.textContent = new Date(photo.takenAt).toLocaleDateString("ja-JP");
+          popupEl.appendChild(dateEl);
+        }
+
+        marker.bindPopup(popupEl, { maxWidth: 220 });
 
         // ポップアップ内の画像クリックでプレビューを開く
         marker.on("popupopen", () => {

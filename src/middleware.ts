@@ -40,8 +40,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // JWT_SECRETが未設定の場合は認証をスキップ
+  // JWT_SECRETが未設定の場合、起動時警告を出しつつ認証をスキップ（開発用）
   if (!process.env.JWT_SECRET) {
+    if (process.env.NODE_ENV === "production") {
+      console.error("[SECURITY WARNING] JWT_SECRET is not set. All access is unrestricted. Set JWT_SECRET in your environment variables.");
+    }
     return NextResponse.next();
   }
 
