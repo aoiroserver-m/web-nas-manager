@@ -9,6 +9,9 @@ interface FileGridItemProps {
   currentPath: string;
   onContextMenu: (item: FileInfo, position: { x: number; y: number }) => void;
   onImageClick?: () => void;
+  selectionMode?: boolean;
+  isSelected?: boolean;
+  onSelect?: (item: FileInfo) => void;
 }
 
 export default function FileGridItem({
@@ -16,18 +19,21 @@ export default function FileGridItem({
   currentPath,
   onContextMenu,
   onImageClick,
+  selectionMode = false,
+  isSelected = false,
+  onSelect,
 }: FileGridItemProps) {
   const itemPath = [currentPath, item.name].filter(Boolean).join("/");
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleTouchStart = useCallback(
-    (e: React.TouchEvent) => {
+    (_e: React.TouchEvent) => {
       longPressTimerRef.current = setTimeout(() => {
-        const touch = e.touches[0];
-        onContextMenu(item, { x: touch.clientX, y: touch.clientY });
+        // 長押しは常に選択モードに入る
+        onSelect?.(item);
       }, 500);
     },
-    [item, onContextMenu]
+    [item, onSelect]
   );
 
   const handleTouchEnd = useCallback(() => {
@@ -40,9 +46,22 @@ export default function FileGridItem({
   const handleRightClick = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
-      onContextMenu(item, { x: e.clientX, y: e.clientY });
+      if (!selectionMode) {
+        onContextMenu(item, { x: e.clientX, y: e.clientY });
+      }
     },
-    [item, onContextMenu]
+    [item, onContextMenu, selectionMode]
+  );
+
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (selectionMode) {
+        e.preventDefault();
+        e.stopPropagation();
+        onSelect?.(item);
+      }
+    },
+    [selectionMode, onSelect, item]
   );
 
   const commonProps = {
@@ -52,9 +71,44 @@ export default function FileGridItem({
     onTouchMove: handleTouchEnd,
   };
 
+  const checkbox = (
+    <div
+      className={`absolute top-1.5 left-1.5 z-10 transition-opacity ${
+        selectionMode ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+      }`}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onSelect?.(item);
+      }}
+    >
+      <div
+        className={`h-5 w-5 rounded-full border-2 flex items-center justify-center shadow-sm transition-colors ${
+          isSelected
+            ? "bg-primary border-primary"
+            : "bg-white/90 border-gray-400 dark:bg-black/60 dark:border-gray-500"
+        }`}
+      >
+        {isSelected && (
+          <svg className="h-3 w-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+            <path
+              fillRule="evenodd"
+              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+              clipRule="evenodd"
+            />
+          </svg>
+        )}
+      </div>
+    </div>
+  );
+
   const thumbnail = (
-    <div className="aspect-square w-full overflow-hidden rounded-lg bg-surface-hover">
-      {item.isImage && item.thumbnailUrl ? (
+    <div
+      className={`relative aspect-square w-full overflow-hidden rounded-lg bg-surface-hover transition-all ${
+        isSelected ? "ring-2 ring-primary ring-offset-1" : ""
+      }`}
+    >
+      {item.thumbnailUrl && (item.isImage || item.isVideo) ? (
         <img
           src={item.thumbnailUrl}
           alt=""
@@ -80,14 +134,32 @@ export default function FileGridItem({
           </svg>
         </div>
       )}
+      {checkbox}
+      {isSelected && (
+        <div className="absolute inset-0 bg-primary/10 pointer-events-none rounded-lg" />
+      )}
     </div>
   );
 
   if (item.type === "directory") {
+    if (selectionMode) {
+      return (
+        <div
+          className={`group relative rounded-xl p-2 transition-colors cursor-pointer ${
+            isSelected ? "bg-primary/10" : "hover:bg-surface-hover"
+          }`}
+          onClick={handleClick}
+          {...commonProps}
+        >
+          {thumbnail}
+          <p className="mt-1.5 truncate text-center text-xs font-medium">{item.name}</p>
+        </div>
+      );
+    }
     return (
       <Link
         href={`/files/${itemPath}`}
-        className="group rounded-xl p-2 transition-colors hover:bg-surface-hover"
+        className="group relative rounded-xl p-2 transition-colors hover:bg-surface-hover"
         {...commonProps}
       >
         {thumbnail}
@@ -98,10 +170,10 @@ export default function FileGridItem({
 
   return (
     <div
-      className={`group rounded-xl p-2 transition-colors hover:bg-surface-hover ${
-        onImageClick ? "cursor-pointer" : ""
-      }`}
-      onClick={onImageClick}
+      className={`group relative rounded-xl p-2 transition-colors ${
+        isSelected ? "bg-primary/10" : "hover:bg-surface-hover"
+      } ${onImageClick || selectionMode ? "cursor-pointer" : ""}`}
+      onClick={selectionMode ? handleClick : onImageClick}
       {...commonProps}
     >
       {thumbnail}

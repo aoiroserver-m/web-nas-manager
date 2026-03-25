@@ -142,7 +142,7 @@ export default function SearchResults({ query }: SearchResultsProps) {
                   className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-hover"
                 >
                   {/* アイコン/サムネイル */}
-                  {item.isImage && item.thumbnailUrl ? (
+                  {item.thumbnailUrl && (item.isImage || item.isVideo) ? (
                     <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-surface-hover">
                       <img src={item.thumbnailUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
                     </div>

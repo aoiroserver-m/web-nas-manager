@@ -10,6 +10,9 @@ interface FileListItemProps {
   currentPath: string;
   onContextMenu: (item: FileInfo, position: { x: number; y: number }) => void;
   onImageClick?: () => void;
+  selectionMode?: boolean;
+  isSelected?: boolean;
+  onSelect?: (item: FileInfo) => void;
 }
 
 /**
@@ -58,7 +61,7 @@ function FileIcon({ item }: { item: FileInfo }) {
     );
   }
 
-  if (item.isImage && item.thumbnailUrl) {
+  if (item.thumbnailUrl && (item.isImage || item.isVideo)) {
     return (
       <div className="h-10 w-10 overflow-hidden rounded-lg bg-surface-hover">
         <img
@@ -115,6 +118,9 @@ export default function FileListItem({
   currentPath,
   onContextMenu,
   onImageClick,
+  selectionMode = false,
+  isSelected = false,
+  onSelect,
 }: FileListItemProps) {
   const itemPath = [currentPath, item.name].filter(Boolean).join("/");
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -143,13 +149,13 @@ export default function FileListItem({
 
   // ロングプレスでコンテキストメニュー（モバイル対応）
   const handleTouchStart = useCallback(
-    (e: React.TouchEvent) => {
+    (_e: React.TouchEvent) => {
       longPressTimerRef.current = setTimeout(() => {
-        const touch = e.touches[0];
-        onContextMenu(item, { x: touch.clientX, y: touch.clientY });
+        // 長押しは常に選択モードに入る
+        onSelect?.(item);
       }, 500);
     },
-    [item, onContextMenu]
+    [item, onSelect]
   );
 
   const handleTouchEnd = useCallback(() => {
@@ -162,10 +168,18 @@ export default function FileListItem({
   const handleRightClick = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
-      onContextMenu(item, { x: e.clientX, y: e.clientY });
+      if (!selectionMode) {
+        onContextMenu(item, { x: e.clientX, y: e.clientY });
+      }
     },
-    [item, onContextMenu]
+    [item, onContextMenu, selectionMode]
   );
+
+  const handleRowClick = useCallback(() => {
+    if (selectionMode) {
+      onSelect?.(item);
+    }
+  }, [selectionMode, onSelect, item]);
 
   const commonProps = {
     onContextMenu: handleRightClick,
@@ -174,7 +188,56 @@ export default function FileListItem({
     onTouchMove: handleTouchEnd,
   };
 
+  const checkboxEl = (
+    <button
+      className="shrink-0 flex items-center justify-center w-8 h-8 -ml-1"
+      onClick={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        onSelect?.(item);
+      }}
+    >
+      <div
+        className={`h-5 w-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+          isSelected
+            ? "bg-primary border-primary"
+            : "border-gray-400 dark:border-gray-500"
+        }`}
+      >
+        {isSelected && (
+          <svg className="h-3 w-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+            <path
+              fillRule="evenodd"
+              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+              clipRule="evenodd"
+            />
+          </svg>
+        )}
+      </div>
+    </button>
+  );
+
   if (item.type === "directory") {
+    if (selectionMode) {
+      return (
+        <li>
+          <div
+            className={`flex items-center gap-3 px-4 py-3 transition-colors cursor-pointer ${
+              isSelected ? "bg-primary/10" : "hover:bg-surface-hover"
+            }`}
+            onClick={handleRowClick}
+            {...commonProps}
+          >
+            {checkboxEl}
+            <FileIcon item={item} />
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-medium">{item.name}</p>
+              <p className="text-xs text-text-secondary">{formatDate(item.modified)}</p>
+            </div>
+          </div>
+        </li>
+      );
+    }
     return (
       <li>
         <Link
@@ -210,12 +273,13 @@ export default function FileListItem({
   return (
     <li>
       <div
-        className={`flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-hover ${
-          onImageClick ? "cursor-pointer" : ""
-        }`}
-        onClick={onImageClick}
+        className={`flex items-center gap-3 px-4 py-3 transition-colors ${
+          isSelected ? "bg-primary/10" : "hover:bg-surface-hover"
+        } ${onImageClick || selectionMode ? "cursor-pointer" : ""}`}
+        onClick={selectionMode ? handleRowClick : onImageClick}
         {...commonProps}
       >
+        {selectionMode && checkboxEl}
         <FileIcon item={item} />
         <div className="min-w-0 flex-1">
           <p className="truncate font-medium">{item.name}</p>
@@ -230,34 +294,38 @@ export default function FileListItem({
             ))}
           </div>
         </div>
-        {/* お気に入り星アイコン */}
-        <button
-          onClick={handleFavoriteClick}
-          className="shrink-0 rounded p-1 transition-colors hover:bg-surface-hover"
-        >
-          {isFavorite ? (
-            <svg className="h-4 w-4 text-yellow-500" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" />
-            </svg>
-          ) : (
-            <svg className="h-4 w-4 text-text-secondary/30 hover:text-yellow-500/50" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" />
-            </svg>
-          )}
-        </button>
-        {/* 3ドットメニューボタン */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            const rect = e.currentTarget.getBoundingClientRect();
-            onContextMenu(item, { x: rect.right, y: rect.bottom });
-          }}
-          className="shrink-0 rounded-lg p-1.5 text-text-secondary/50 transition-colors hover:bg-surface-hover hover:text-text-secondary"
-        >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 12.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 18.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z" />
-          </svg>
-        </button>
+        {!selectionMode && (
+          <>
+            {/* お気に入り星アイコン */}
+            <button
+              onClick={handleFavoriteClick}
+              className="shrink-0 rounded p-1 transition-colors hover:bg-surface-hover"
+            >
+              {isFavorite ? (
+                <svg className="h-4 w-4 text-yellow-500" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" />
+                </svg>
+              ) : (
+                <svg className="h-4 w-4 text-text-secondary/30 hover:text-yellow-500/50" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" />
+                </svg>
+              )}
+            </button>
+            {/* 3ドットメニューボタン */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                const rect = e.currentTarget.getBoundingClientRect();
+                onContextMenu(item, { x: rect.right, y: rect.bottom });
+              }}
+              className="shrink-0 rounded-lg p-1.5 text-text-secondary/50 transition-colors hover:bg-surface-hover hover:text-text-secondary"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 12.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 18.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z" />
+              </svg>
+            </button>
+          </>
+        )}
       </div>
     </li>
   );

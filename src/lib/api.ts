@@ -168,3 +168,41 @@ export async function getAllTags(): Promise<string[]> {
   const data = await res.json();
   return data.tags;
 }
+
+/**
+ * Copy a file or folder to the specified destination directory.
+ */
+export async function copyItem(
+  sourcePath: string,
+  destDir: string
+): Promise<{ success: boolean }> {
+  const res = await fetch("/api/files/copy", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sourcePath, destDir }),
+  });
+  if (!res.ok) {
+    const data = await res.json();
+    throw new Error(data.message || "Failed to copy");
+  }
+  return res.json();
+}
+
+/**
+ * Move a file or folder to the specified destination directory.
+ */
+export async function moveItem(
+  sourcePath: string,
+  destDir: string
+): Promise<{ success: boolean }> {
+  const res = await fetch("/api/files/move", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sourcePath, destDir }),
+  });
+  if (!res.ok) {
+    const data = await res.json();
+    throw new Error(data.message || "Failed to move");
+  }
+  return res.json();
+}

@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
             isImage: !isDir && isImageFile(entry.name),
             isVideo: !isDir && isVideoFile(entry.name),
             thumbnailUrl:
-              !isDir && isImageFile(entry.name)
+              !isDir && (isImageFile(entry.name) || isVideoFile(entry.name))
                 ? `/api/thumbnail?path=${encodeURIComponent(entryRelativePath)}`
                 : undefined,
           };

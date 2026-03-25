@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DirectoryListing, FileInfo } from "@/types/files";
-import { fetchFiles, deleteItem, renameItem, getDownloadUrl, toggleFavorite, updateTags, getFileTags as fetchFileTags, getAllTags } from "@/lib/api";
+import { fetchFiles, deleteItem, renameItem, getDownloadUrl, toggleFavorite, updateTags, getFileTags as fetchFileTags, getAllTags, copyItem, moveItem } from "@/lib/api";
 import FileListItem from "./FileListItem";
 import FileGridItem from "./FileGridItem";
 import Toolbar, { type SortKey, type SortOrder, type ViewMode } from "./Toolbar";
@@ -12,6 +12,7 @@ import ImagePreview from "./ImagePreview";
 import VideoPlayer from "./VideoPlayer";
 import PhotoMapView from "./PhotoMapView";
 import Modal from "./Modal";
+import DirectoryPicker from "./DirectoryPicker";
 
 interface FileListContainerProps {
   currentPath: string;
@@ -36,7 +37,7 @@ export default function FileListContainer({
   const [renaming, setRenaming] = useState(false);
   const [renameError, setRenameError] = useState<string | null>(null);
 
-  // 削除確認モーダル
+  // 削除確認モーダル（単体）
   const [deleteTarget, setDeleteTarget] = useState<FileInfo | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -52,6 +53,22 @@ export default function FileListContainer({
   const [existingTags, setExistingTags] = useState<string[]>([]);
   const [fileTags, setFileTags] = useState<string[]>([]);
   const [isFavorite, setIsFavorite] = useState(false);
+  void isFavorite; // タグエディタモーダルで参照用に保持
+
+  // ---- 複数選択 ----
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+
+  // 一括削除確認
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  // コピー・移動操作中
+  const [bulkOperating, setBulkOperating] = useState(false);
+  const [bulkOperationError, setBulkOperationError] = useState<string | null>(null);
+
+  // ディレクトリピッカー（コピー or 移動）
+  const [pickerAction, setPickerAction] = useState<"copy" | "move" | null>(null);
 
   // ソート・表示モード（localStorageで永続化）
   const [sortKey, setSortKey] = useState<SortKey>(() => {
@@ -91,6 +108,12 @@ export default function FileListContainer({
   useEffect(() => {
     loadFiles();
   }, [loadFiles]);
+
+  // パスが変わったら選択をリセット
+  useEffect(() => {
+    setSelectionMode(false);
+    setSelectedPaths(new Set());
+  }, [currentPath]);
 
   const handleSortChange = (key: SortKey, order: SortOrder) => {
     setSortKey(key);
@@ -210,8 +233,86 @@ export default function FileListContainer({
     await updateTags(itemPath, updated);
   };
 
+  // ---- 複数選択ハンドラ ----
+  const toggleSelect = useCallback((item: FileInfo) => {
+    const itemPath = [currentPath, item.name].filter(Boolean).join("/");
+    setSelectionMode(true);
+    setSelectedPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemPath)) {
+        next.delete(itemPath);
+      } else {
+        next.add(itemPath);
+      }
+      return next;
+    });
+  }, [currentPath]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedPaths(new Set());
+    setSelectionMode(false);
+  }, []);
+
+  const selectAll = useCallback(() => {
+    const allPaths = sorted.map((item) =>
+      [currentPath, item.name].filter(Boolean).join("/")
+    );
+    setSelectedPaths(new Set(allPaths));
+  }, [sorted, currentPath]);
+
+  const confirmBulkDelete = async () => {
+    setBulkDeleting(true);
+    const errors: string[] = [];
+    for (const p of selectedPaths) {
+      try {
+        await deleteItem(p);
+      } catch {
+        errors.push(p);
+      }
+    }
+    setBulkDeleting(false);
+    setBulkDeleteConfirm(false);
+    clearSelection();
+    loadFiles();
+    if (errors.length > 0) {
+      setError(`${errors.length}件の削除に失敗しました`);
+    }
+  };
+
+  const executeBulkOperation = async (destDir: string) => {
+    if (!pickerAction) return;
+    setBulkOperating(true);
+    setBulkOperationError(null);
+    const errors: string[] = [];
+    const fn = pickerAction === "copy" ? copyItem : moveItem;
+    for (const p of selectedPaths) {
+      try {
+        await fn(p, destDir);
+      } catch (err) {
+        errors.push(err instanceof Error ? err.message : p);
+      }
+    }
+    setBulkOperating(false);
+    setPickerAction(null);
+    clearSelection();
+    loadFiles();
+    if (errors.length > 0) {
+      setBulkOperationError(errors[0]);
+    }
+  };
+
   const contextMenuItems = contextMenu
     ? [
+        // 選択
+        {
+          label: "選択",
+          icon: (
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+          ),
+          onClick: () => toggleSelect(contextMenu.item),
+        },
         // お気に入りトグル
         {
           label: "Favorite",
@@ -354,31 +455,131 @@ export default function FileListContainer({
           </div>
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto pb-20">
           {viewMode === "grid" ? (
             <div className="grid grid-cols-3 gap-1 p-2 sm:grid-cols-4 lg:grid-cols-6">
-              {sorted.map((item: FileInfo) => (
-                <FileGridItem
-                  key={`${currentPath}/${item.name}`}
-                  item={item}
-                  currentPath={currentPath}
-                  onContextMenu={handleContextMenu}
-                  onImageClick={item.isImage ? () => handleImageClick(item) : item.isVideo ? () => setVideoTarget(item) : undefined}
-                />
-              ))}
+              {sorted.map((item: FileInfo) => {
+                const p = [currentPath, item.name].filter(Boolean).join("/");
+                return (
+                  <FileGridItem
+                    key={`${currentPath}/${item.name}`}
+                    item={item}
+                    currentPath={currentPath}
+                    onContextMenu={handleContextMenu}
+                    onImageClick={
+                      !selectionMode
+                        ? item.isImage
+                          ? () => handleImageClick(item)
+                          : item.isVideo
+                          ? () => setVideoTarget(item)
+                          : undefined
+                        : undefined
+                    }
+                    selectionMode={selectionMode}
+                    isSelected={selectedPaths.has(p)}
+                    onSelect={toggleSelect}
+                  />
+                );
+              })}
             </div>
           ) : (
             <ul className="divide-y divide-border">
-              {sorted.map((item: FileInfo) => (
-                <FileListItem
-                  key={`${currentPath}/${item.name}`}
-                  item={item}
-                  currentPath={currentPath}
-                  onContextMenu={handleContextMenu}
-                  onImageClick={item.isImage ? () => handleImageClick(item) : item.isVideo ? () => setVideoTarget(item) : undefined}
-                />
-              ))}
+              {sorted.map((item: FileInfo) => {
+                const p = [currentPath, item.name].filter(Boolean).join("/");
+                return (
+                  <FileListItem
+                    key={`${currentPath}/${item.name}`}
+                    item={item}
+                    currentPath={currentPath}
+                    onContextMenu={handleContextMenu}
+                    onImageClick={
+                      !selectionMode
+                        ? item.isImage
+                          ? () => handleImageClick(item)
+                          : item.isVideo
+                          ? () => setVideoTarget(item)
+                          : undefined
+                        : undefined
+                    }
+                    selectionMode={selectionMode}
+                    isSelected={selectedPaths.has(p)}
+                    onSelect={toggleSelect}
+                  />
+                );
+              })}
             </ul>
+          )}
+        </div>
+      )}
+
+      {/* ---- 複数選択ツールバー（下部固定） ---- */}
+      {selectionMode && (
+        <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 flex items-center gap-1 rounded-2xl border border-border bg-surface px-3 py-2 shadow-2xl">
+          {/* 選択件数 */}
+          <span className="text-sm font-semibold text-text tabular-nums mr-1">
+            {selectedPaths.size}件選択
+          </span>
+
+          <div className="w-px h-5 bg-border mx-1" />
+
+          {/* すべて選択 */}
+          <button
+            onClick={selectAll}
+            className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:bg-surface-hover"
+          >
+            すべて選択
+          </button>
+
+          <div className="w-px h-5 bg-border mx-1" />
+
+          {/* コピー */}
+          <button
+            onClick={() => setPickerAction("copy")}
+            disabled={selectedPaths.size === 0 || bulkOperating}
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-text transition-colors hover:bg-surface-hover disabled:opacity-40"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" />
+            </svg>
+            コピー
+          </button>
+
+          {/* 移動 */}
+          <button
+            onClick={() => setPickerAction("move")}
+            disabled={selectedPaths.size === 0 || bulkOperating}
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-text transition-colors hover:bg-surface-hover disabled:opacity-40"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5 7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 0L16.5 21m0 0L12 16.5m4.5 4.5V7.5" />
+            </svg>
+            移動
+          </button>
+
+          {/* 削除 */}
+          <button
+            onClick={() => setBulkDeleteConfirm(true)}
+            disabled={selectedPaths.size === 0 || bulkOperating}
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-danger transition-colors hover:bg-danger/10 disabled:opacity-40"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+            </svg>
+            削除
+          </button>
+
+          <div className="w-px h-5 bg-border mx-1" />
+
+          {/* キャンセル */}
+          <button
+            onClick={clearSelection}
+            className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:bg-surface-hover"
+          >
+            キャンセル
+          </button>
+
+          {bulkOperating && (
+            <div className="ml-1 h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           )}
         </div>
       )}
@@ -440,7 +641,7 @@ export default function FileListContainer({
         </form>
       </Modal>
 
-      {/* 削除確認モーダル */}
+      {/* 削除確認モーダル（単体） */}
       <Modal
         isOpen={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
@@ -468,6 +669,35 @@ export default function FileListContainer({
             className="rounded-lg bg-danger px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-danger/90 disabled:opacity-50"
           >
             {deleting ? "Deleting..." : "Delete"}
+          </button>
+        </div>
+      </Modal>
+
+      {/* 一括削除確認モーダル */}
+      <Modal
+        isOpen={bulkDeleteConfirm}
+        onClose={() => setBulkDeleteConfirm(false)}
+        title="一括削除"
+      >
+        <p className="text-sm text-text-secondary">
+          選択した{" "}
+          <span className="font-medium text-text">{selectedPaths.size}件</span>{" "}
+          のファイル/フォルダを削除しますか？
+        </p>
+        <p className="mt-1 text-xs text-danger">この操作は元に戻せません。</p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            onClick={() => setBulkDeleteConfirm(false)}
+            className="rounded-lg px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-hover"
+          >
+            キャンセル
+          </button>
+          <button
+            onClick={confirmBulkDelete}
+            disabled={bulkDeleting}
+            className="rounded-lg bg-danger px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-danger/90 disabled:opacity-50"
+          >
+            {bulkDeleting ? "削除中..." : "削除する"}
           </button>
         </div>
       </Modal>
@@ -529,6 +759,35 @@ export default function FileListContainer({
           </form>
         </div>
       </Modal>
+
+      {/* コピー/移動先フォルダ選択 */}
+      <DirectoryPicker
+        isOpen={!!pickerAction}
+        onClose={() => setPickerAction(null)}
+        onSelect={executeBulkOperation}
+        title={pickerAction === "copy" ? "コピー先フォルダを選択" : "移動先フォルダを選択"}
+        initialPath={currentPath}
+        excludePaths={[...selectedPaths]}
+      />
+
+      {/* 一括操作エラー */}
+      {bulkOperationError && (
+        <Modal
+          isOpen={!!bulkOperationError}
+          onClose={() => setBulkOperationError(null)}
+          title="エラー"
+        >
+          <p className="text-sm text-text-secondary">{bulkOperationError}</p>
+          <div className="mt-4 flex justify-end">
+            <button
+              onClick={() => setBulkOperationError(null)}
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white"
+            >
+              OK
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {/* 画像プレビュー */}
       <ImagePreview

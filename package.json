@@ -21,6 +21,9 @@
     "react-leaflet-cluster": "^4.0.0",
     "sharp": "^0.34.5"
   },
+  "pnpm": {
+    "onlyBuiltDependencies": ["sharp", "unrs-resolver"]
+  },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4.2.2",

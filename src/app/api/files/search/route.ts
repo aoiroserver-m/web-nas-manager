@@ -61,9 +61,10 @@ export async function GET(request: NextRequest) {
               extension: isDir ? "" : ext,
               isImage: !isDir && isImageFile(entry.name),
               isVideo: !isDir && isVideoFile(entry.name),
-              thumbnailUrl: !isDir && isImageFile(entry.name)
-                ? `/api/thumbnail?path=${encodeURIComponent(relativePath)}`
-                : undefined,
+              thumbnailUrl:
+                !isDir && (isImageFile(entry.name) || isVideoFile(entry.name))
+                  ? `/api/thumbnail?path=${encodeURIComponent(relativePath)}`
+                  : undefined,
               // 検索結果にはファイルのフルパスを含める
               path: relativePath,
             });
