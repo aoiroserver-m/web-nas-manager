@@ -4,16 +4,38 @@ import { createWriteStream } from "fs";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
 import Busboy from "busboy";
+import { jwtVerify } from "jose";
 import { validatePath, sanitizeFilename, validateChildPath, isNodeError } from "@/lib/pathUtils";
 import { MAX_UPLOAD_SIZE } from "@/lib/constants";
 
 export const maxDuration = 300;
+
+function getSecret(): Uint8Array {
+  const s = process.env.SESSION_SECRET || process.env.TOTP_SECRET || "fallback-secret";
+  return new TextEncoder().encode(s);
+}
+
+async function verifyAuth(request: NextRequest): Promise<boolean> {
+  if (!process.env.TOTP_SECRET) return true; // 認証未設定なら通す
+  const token = request.cookies.get("nas-session")?.value;
+  if (!token) return false;
+  try {
+    await jwtVerify(token, getSecret());
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * POST /api/files/upload
  * Uploads a file via multipart form data (streaming, supports large files).
  */
 export async function POST(request: NextRequest) {
+  if (!(await verifyAuth(request))) {
+    return NextResponse.json({ error: "UNAUTHORIZED", message: "認証が必要です" }, { status: 401 });
+  }
+
   try {
     const contentType = request.headers.get("content-type") || "";
     if (!contentType.includes("multipart/form-data")) {

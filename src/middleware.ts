@@ -59,5 +59,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon\\.ico).*)"],
+  // アップロードルートはbodyバッファリングを避けるためmatcherから除外
+  // 認証はroute.ts側で行う
+  matcher: ["/((?!_next/static|_next/image|favicon\\.ico|api/files/upload).*)"],
 };
