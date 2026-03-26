@@ -21,6 +21,8 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - AUTH_USERNAME=${AUTH_USERNAME}
       - AUTH_PASSWORD_HASH=${AUTH_PASSWORD_HASH}
+      # タグDBをnamed volumeに保存（コンテナ再ビルド後も永続化）
+      - TAGS_DB_PATH=/cache/thumbnails/.web-nas-tags.json
 
 volumes:
   thumbnail-cache:

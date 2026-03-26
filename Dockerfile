@@ -29,6 +29,9 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
+# 動画・HEIC サムネイル生成に必要なツール
+RUN apk add --no-cache ffmpeg libheif-tools
+
 # キャッシュディレクトリを作成（/dataはボリュームマウントで上書きされるためここでは作成しない）
 RUN mkdir -p /cache/thumbnails && \
     chown -R nextjs:nodejs /cache
