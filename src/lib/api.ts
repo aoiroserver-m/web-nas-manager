@@ -24,7 +24,7 @@ export async function uploadFile(
 ): Promise<{ success: boolean; name: string; size: number }> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", "/api/files/upload");
+    xhr.open("POST", `/api/files/upload?path=${encodeURIComponent(targetPath)}`);
 
     xhr.upload.addEventListener("progress", (e) => {
       if (e.lengthComputable && onProgress) {

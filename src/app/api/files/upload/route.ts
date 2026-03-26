@@ -67,19 +67,14 @@ function streamUpload(request: NextRequest, contentType: string): Promise<NextRe
   return new Promise((resolve, reject) => {
     const busboy = Busboy({ headers: { "content-type": contentType }, limits: { fileSize: MAX_UPLOAD_SIZE } });
 
-    let targetPath = "";
+    const targetPath = new URL(request.url).searchParams.get("path") || "";
     // filePromise が resolve/reject するまで finish を待つ
     let filePromise: Promise<{ success: boolean; name: string; size: number }> | null = null;
 
-    busboy.on("field", (name: string, value: string) => {
-      if (name === "path") targetPath = value;
-    });
-
     busboy.on("file", (_name: string, stream: NodeJS.ReadableStream, info: { filename: string }) => {
-      const currentPath = targetPath; // fieldより先にfileイベントが来ることがあるため後でも読める
       filePromise = (async () => {
         const safeName = sanitizeFilename(info.filename);
-        const dirPath = validatePath(currentPath);
+        const dirPath = validatePath(targetPath);
         const filePath = validateChildPath(dirPath, safeName);
 
         await fs.mkdir(dirPath, { recursive: true });
