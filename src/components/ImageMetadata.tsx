@@ -205,11 +205,11 @@ function CameraIcon({ make, model }: { make: string | undefined; model?: string 
   // Wikipedia画像が取得できた場合
   if (imgUrl && !imgError) {
     return (
-      <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-white/5">
+      <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-white/5 flex items-center justify-center p-1">
         <img
           src={imgUrl}
           alt={model ?? make ?? "camera"}
-          className="h-full w-full object-cover"
+          className="max-h-full max-w-full object-contain"
           onError={() => setImgError(true)}
         />
       </div>
