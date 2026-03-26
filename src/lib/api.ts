@@ -152,9 +152,10 @@ export async function updateTags(
  * Get tags/favorite data for a file.
  */
 export async function getFileTags(
-  path: string
+  path: string,
+  signal?: AbortSignal
 ): Promise<{ favorite?: boolean; tags?: string[] }> {
-  const res = await fetch(`/api/files/tags?path=${encodeURIComponent(path)}`);
+  const res = await fetch(`/api/files/tags?path=${encodeURIComponent(path)}`, { signal });
   if (!res.ok) return {};
   return res.json();
 }

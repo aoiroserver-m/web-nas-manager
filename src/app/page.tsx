@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { STORAGE_DRIVES } from "@/lib/constants";
+import PasscodeModal from "@/components/PasscodeModal";
 
 // 世界各地の絶景写真（Unsplash）
 const SCENE_IMAGES = [
@@ -54,8 +56,29 @@ function formatTime(date: Date) {
 }
 
 export default function Home() {
+  const router = useRouter();
   const now = useTime();
   const greeting = getGreeting(now);
+
+  // パスコード認証
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [passcodeModal, setPasscodeModal] = useState<{ driveName: string; targetHref: string } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/auth/passcode")
+      .then((r) => r.json())
+      .then((d) => setIsAuthenticated(!!d.valid))
+      .catch(() => {});
+  }, []);
+
+  const handleDriveClick = (drive: { id: string; name: string }) => {
+    const href = `/files/${drive.id}`;
+    if (isAuthenticated) {
+      router.push(href);
+    } else {
+      setPasscodeModal({ driveName: drive.name, targetHref: href });
+    }
+  };
 
   // スライドショー
   // layer0 / layer1 を交互に使いクロスフェード
@@ -218,10 +241,10 @@ export default function Home() {
           </p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {STORAGE_DRIVES.map((drive) => (
-              <Link
+              <button
                 key={drive.id}
-                href={`/files/${drive.id}`}
-                className="group relative overflow-hidden rounded-xl border border-white/10 bg-white/10 p-3 backdrop-blur-md transition-all hover:border-cyan-400/50 hover:bg-white/20 hover:scale-[1.03] hover:shadow-xl"
+                onClick={() => handleDriveClick(drive)}
+                className="group relative overflow-hidden rounded-xl border border-white/10 bg-white/10 p-3 backdrop-blur-md transition-all hover:border-cyan-400/50 hover:bg-white/20 hover:scale-[1.03] hover:shadow-xl text-left active:scale-95"
               >
                 <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity group-hover:opacity-100 bg-[radial-gradient(circle_at_50%_0%,rgba(34,211,238,0.12),transparent_70%)]" />
                 <div className="flex items-center gap-2">
@@ -239,7 +262,7 @@ export default function Home() {
                     <p className="truncate text-[10px] text-white/40">{drive.description}</p>
                   </div>
                 </div>
-              </Link>
+              </button>
             ))}
           </div>
         </div>
@@ -260,6 +283,15 @@ export default function Home() {
           </Link>
         </div>
       </div>
+
+      {/* パスコードモーダル */}
+      {passcodeModal && (
+        <PasscodeModal
+          driveName={passcodeModal.driveName}
+          targetHref={passcodeModal.targetHref}
+          onClose={() => setPasscodeModal(null)}
+        />
+      )}
 
       {/* ---- スクリーンセーバーUI ---- */}
       <div

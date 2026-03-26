@@ -59,27 +59,22 @@ async function decodeHeicWithQlmanage(absolutePath: string): Promise<Buffer | nu
  */
 async function decodeHeicWithHeifConvert(absolutePath: string): Promise<Buffer | null> {
   if (process.platform !== "linux") return null;
-  const candidates = ["heif-convert", "/usr/bin/heif-convert", "/usr/local/bin/heif-convert"];
+  const candidates = ["/usr/bin/heif-convert", "heif-convert", "/usr/local/bin/heif-convert"];
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "web-nas-heic-"));
   const outPath = path.join(tmp, "preview.jpg");
-  for (const bin of candidates) {
-    try {
-      await execFileAsync(bin, ["--version"], { maxBuffer: 4096 });
-    } catch {
-      continue;
-    }
-    try {
-      await execFileAsync(bin, [absolutePath, outPath], { maxBuffer: 512 * 1024 });
-      const buf = await fs.readFile(outPath);
-      if (buf.length > 64) {
-        return buf;
+  try {
+    for (const bin of candidates) {
+      try {
+        await execFileAsync(bin, [absolutePath, outPath], { maxBuffer: 512 * 1024 });
+        const buf = await fs.readFile(outPath);
+        if (buf.length > 64) return buf;
+      } catch {
+        /* このバイナリは使えない、次を試す */
       }
-    } catch {
-      /* 変換失敗 */
     }
-    break;
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true }).catch(() => {});
   }
-  await fs.rm(tmp, { recursive: true, force: true }).catch(() => {});
   return null;
 }
 
@@ -109,9 +104,9 @@ async function decodeHeicWithFfmpeg(absolutePath: string): Promise<Buffer | null
           "-vcodec", "mjpeg",
           "-",
         ],
-        { maxBuffer: 40 * 1024 * 1024 }
+        { maxBuffer: 40 * 1024 * 1024, encoding: "buffer" }
       );
-      if (Buffer.isBuffer(stdout) && stdout.length > 64) return stdout;
+      if (stdout.length > 64) return stdout;
     } catch {
       /* デコーダ不足など */
     }

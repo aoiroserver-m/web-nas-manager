@@ -37,9 +37,9 @@ async function extractWithFfmpeg(absolutePath: string, ffmpegBin: string): Promi
         "2",
         "-",
       ],
-      { maxBuffer: 40 * 1024 * 1024 }
+      { maxBuffer: 40 * 1024 * 1024, encoding: "buffer" }
     );
-    if (Buffer.isBuffer(stdout) && stdout.length > 64) return stdout;
+    if (stdout.length > 64) return stdout;
   } catch {
     /* デコーダ不足・パス問題など */
   }

@@ -129,24 +129,24 @@ export default function FileListItem({
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isFavorite, setIsFavorite] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
-  // ユーザーが星を操作した場合、遅延して戻ってくるAPIレスポンスで上書きしない
-  const userInteractedRef = useRef(false);
 
-  // お気に入り・タグ状態を取得
+  // お気に入り・タグ状態を取得（ユーザー操作時はAbortControllerでキャンセル）
+  const fetchAbortRef = useRef<AbortController | null>(null);
   useEffect(() => {
-    userInteractedRef.current = false;
-    fetchFileTags(itemPath).then((data) => {
-      if (!userInteractedRef.current) {
-        setIsFavorite(!!data.favorite);
-        setTags(data.tags || []);
-      }
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    fetchFileTags(itemPath, controller.signal).then((data) => {
+      setIsFavorite(!!data.favorite);
+      setTags(data.tags || []);
     }).catch(() => {});
+    return () => controller.abort();
   }, [itemPath]);
 
   const handleFavoriteClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    userInteractedRef.current = true;
+    // 進行中の初期フェッチをキャンセルして楽観的更新を保護
+    fetchAbortRef.current?.abort();
     const newState = !isFavorite;
     setIsFavorite(newState);
     try {
