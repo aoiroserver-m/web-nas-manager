@@ -18,6 +18,7 @@ function isPublicPath(pathname: string): boolean {
   return (
     pathname === "/" ||
     pathname === "/login" ||
+    pathname === "/totp-setup" ||
     pathname.startsWith("/api/auth/") ||
     pathname.startsWith("/icons/") ||
     pathname === "/manifest.json" ||
