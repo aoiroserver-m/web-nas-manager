@@ -3,8 +3,7 @@ import fs from "fs/promises";
 import { createWriteStream } from "fs";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const Busboy = require("next/dist/compiled/busboy");
+import Busboy from "busboy";
 import { validatePath, sanitizeFilename, validateChildPath, isNodeError } from "@/lib/pathUtils";
 import { MAX_UPLOAD_SIZE } from "@/lib/constants";
 
