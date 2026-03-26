@@ -68,7 +68,27 @@ async function fetchDuckDuckGoImage(query: string): Promise<string | null> {
     const data = await imgRes.json() as { results?: { image: string; thumbnail: string }[] };
     const results = data.results ?? [];
 
-    // 最初の有効な画像 URL を返す（thumbnail より image の方が高画質）
+    // 公式メーカー・大手カメラ販売店のドメインを優先
+    const PREFERRED_DOMAINS = [
+      "canon.com", "canon.jp", "adis.ws",
+      "nikon.com", "nikon.jp",
+      "sony.com", "sony.jp",
+      "fujifilm.com", "fujifilm-x.com",
+      "olympus.com", "olympus.jp",
+      "panasonic.com", "panasonic.jp",
+      "ricoh.com",
+      "bhphotovideo.com",
+      "adorama.com",
+      "dpreview.com",
+    ];
+
+    const preferred = results.slice(0, 20).find(r =>
+      r.image?.startsWith("http") &&
+      PREFERRED_DOMAINS.some(d => r.image.includes(d))
+    );
+    if (preferred) return preferred.image;
+
+    // 優先ドメインになければ最初の有効な URL
     for (const r of results.slice(0, 5)) {
       if (r.image && r.image.startsWith("http")) return r.image;
     }
