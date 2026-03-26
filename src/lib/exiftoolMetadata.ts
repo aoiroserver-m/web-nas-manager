@@ -3,7 +3,7 @@ import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);
 
-interface ExiftoolOutput {
+export interface ExiftoolOutput {
   Make?: string;
   Model?: string;
   LensModel?: string;

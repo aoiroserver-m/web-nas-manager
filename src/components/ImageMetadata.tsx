@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import type { ImageMetadata as ImageMetadataType } from "@/types/metadata";
 import LocationMap from "./LocationMap";
 
@@ -59,7 +59,7 @@ export default function ImageMetadataPanel({
                 <div className="rounded-lg bg-white/5 px-3 py-2.5">
                   {metadata.camera ? (
                     <div className="flex items-center gap-3">
-                      <CameraIcon make={metadata.camera.make} />
+                      <CameraIcon make={metadata.camera.make} model={metadata.camera.model} />
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-white/90 leading-tight">
                           {metadata.camera.model || metadata.camera.make || "不明"}
@@ -171,19 +171,52 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 const BRAND_COLORS: Record<string, { bg: string; text: string; label: string }> = {
-  canon:    { bg: "bg-red-700",    text: "text-white", label: "C" },
-  nikon:    { bg: "bg-yellow-500", text: "text-black", label: "N" },
-  sony:     { bg: "bg-zinc-800",   text: "text-white", label: "S" },
-  fujifilm: { bg: "bg-green-700",  text: "text-white", label: "F" },
-  olympus:  { bg: "bg-blue-700",   text: "text-white", label: "O" },
-  panasonic:{ bg: "bg-blue-900",   text: "text-white", label: "P" },
-  leica:    { bg: "bg-red-600",    text: "text-white", label: "L" },
-  pentax:   { bg: "bg-indigo-700", text: "text-white", label: "P" },
-  ricoh:    { bg: "bg-gray-700",   text: "text-white", label: "R" },
-  hasselblad:{ bg: "bg-orange-600",text: "text-white", label: "H" },
+  canon:     { bg: "bg-red-700",    text: "text-white", label: "C" },
+  nikon:     { bg: "bg-yellow-500", text: "text-black", label: "N" },
+  sony:      { bg: "bg-zinc-800",   text: "text-white", label: "S" },
+  fujifilm:  { bg: "bg-green-700",  text: "text-white", label: "F" },
+  olympus:   { bg: "bg-blue-700",   text: "text-white", label: "O" },
+  panasonic: { bg: "bg-blue-900",   text: "text-white", label: "P" },
+  leica:     { bg: "bg-red-600",    text: "text-white", label: "L" },
+  pentax:    { bg: "bg-indigo-700", text: "text-white", label: "P" },
+  ricoh:     { bg: "bg-gray-700",   text: "text-white", label: "R" },
+  hasselblad:{ bg: "bg-orange-600", text: "text-white", label: "H" },
+  apple:     { bg: "bg-gray-500",   text: "text-white", label: "A" },
+  dji:       { bg: "bg-gray-900",   text: "text-white", label: "D" },
+  gopro:     { bg: "bg-blue-500",   text: "text-white", label: "G" },
 };
 
-function CameraIcon({ make }: { make: string | undefined }) {
+function CameraIcon({ make, model }: { make: string | undefined; model?: string }) {
+  const [imgUrl, setImgUrl] = useState<string | null>(null);
+  const [imgError, setImgError] = useState(false);
+  const fetchedRef = useRef(false);
+
+  useEffect(() => {
+    if (!make && !model) return;
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+
+    fetch(`/api/camera-image?make=${encodeURIComponent(make ?? "")}&model=${encodeURIComponent(model ?? "")}`)
+      .then(r => r.json())
+      .then((d: { url: string | null }) => { if (d.url) setImgUrl(d.url); })
+      .catch(() => {});
+  }, [make, model]);
+
+  // Wikipedia画像が取得できた場合
+  if (imgUrl && !imgError) {
+    return (
+      <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-white/5">
+        <img
+          src={imgUrl}
+          alt={model ?? make ?? "camera"}
+          className="h-full w-full object-cover"
+          onError={() => setImgError(true)}
+        />
+      </div>
+    );
+  }
+
+  // フォールバック: ブランドカラーアイコン
   const key = make?.toLowerCase().split(" ")[0] ?? "";
   const brand = BRAND_COLORS[key];
 
@@ -195,7 +228,6 @@ function CameraIcon({ make }: { make: string | undefined }) {
     );
   }
 
-  // 汎用カメラアイコン
   return (
     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/10">
       <svg className="h-5 w-5 text-white/50" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">

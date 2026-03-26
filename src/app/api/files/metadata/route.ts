@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
-import { validatePath, isNodeError, isRawFile, getExtension } from "@/lib/pathUtils";
+import { validatePath, isNodeError, isRawFile, isVideoFile, getExtension } from "@/lib/pathUtils";
 import { extractRawJpeg } from "@/lib/rawUtils";
 import { extractMetadataWithExiftool, formatExposureTime } from "@/lib/exiftoolMetadata";
 import type { ImageMetadata } from "@/types/metadata";
@@ -24,6 +24,14 @@ export async function GET(request: NextRequest) {
     const absolutePath = validatePath(requestedPath);
     const ext = getExtension(absolutePath);
 
+    // 動画ファイルは exifr 非対応のため exiftool に直接フォールバック
+    if (isVideoFile(absolutePath)) {
+      const raw = await extractMetadataWithExiftool(absolutePath);
+      if (!raw) return NextResponse.json({ metadata: null });
+      const metadata = buildMetadataFromExiftool(raw);
+      return NextResponse.json({ metadata });
+    }
+
     // --- exifr で試みる ---
     let exifrResult: ImageMetadata | null = null;
     try {
@@ -31,7 +39,7 @@ export async function GET(request: NextRequest) {
       if (isRawFile(absolutePath)) {
         const embedded = await extractRawJpeg(absolutePath, ext);
         if (embedded) parseBuffer = embedded;
-        else parseBuffer = Buffer.alloc(0); // 空バッファ → exifr が null を返す
+        else parseBuffer = Buffer.alloc(0);
       } else {
         parseBuffer = await fs.readFile(absolutePath);
       }
@@ -63,51 +71,8 @@ export async function GET(request: NextRequest) {
 
     // --- exiftool フォールバック（CR3・特殊TIFFなど）---
     const raw = await extractMetadataWithExiftool(absolutePath);
-    if (!raw) {
-      return NextResponse.json({ metadata: exifrResult ?? null });
-    }
-
-    const metadata: ImageMetadata = {};
-
-    if (raw.Make || raw.Model) {
-      metadata.camera = { make: raw.Make, model: raw.Model };
-    }
-    if (raw.LensModel || raw.LensInfo) {
-      metadata.lens = raw.LensModel ?? raw.LensInfo;
-    }
-
-    const shutterSpeed = formatExposureTime(raw.ExposureTime);
-    const focalLength = typeof raw.FocalLength === "string"
-      ? parseFloat(raw.FocalLength)
-      : raw.FocalLength;
-
-    if (raw.ISO || raw.FNumber || raw.ExposureTime || raw.FocalLength) {
-      metadata.settings = {
-        iso: raw.ISO,
-        aperture: raw.FNumber,
-        shutterSpeed,
-        focalLength,
-      };
-    }
-
-    if (raw.GPSLatitude != null && raw.GPSLongitude != null) {
-      metadata.gps = {
-        latitude: raw.GPSLatitude,
-        longitude: raw.GPSLongitude,
-        altitude: typeof raw.GPSAltitude === "string"
-          ? parseFloat(raw.GPSAltitude)
-          : raw.GPSAltitude,
-      };
-    }
-
-    const dt = raw.DateTimeOriginal ?? raw.CreateDate;
-    if (dt) metadata.datetime = dt;
-
-    const w = raw.ExifImageWidth ?? raw.ImageWidth;
-    const h = raw.ExifImageHeight ?? raw.ImageHeight;
-    if (w && h) metadata.dimensions = { width: w, height: h };
-
-    return NextResponse.json({ metadata });
+    if (!raw) return NextResponse.json({ metadata: exifrResult ?? null });
+    return NextResponse.json({ metadata: buildMetadataFromExiftool(raw) });
   } catch (err) {
     if (err instanceof Error && err.message.includes("Access denied")) {
       return NextResponse.json({ error: "ACCESS_DENIED", message: err.message }, { status: 403 });
@@ -118,6 +83,31 @@ export async function GET(request: NextRequest) {
     console.error("GET /api/files/metadata error:", err);
     return NextResponse.json({ metadata: null });
   }
+}
+
+import type { ExiftoolOutput } from "@/lib/exiftoolMetadata";
+
+function buildMetadataFromExiftool(raw: ExiftoolOutput): ImageMetadata {
+  const metadata: ImageMetadata = {};
+  if (raw.Make || raw.Model) metadata.camera = { make: raw.Make, model: raw.Model };
+  if (raw.LensModel || raw.LensInfo) metadata.lens = raw.LensModel ?? raw.LensInfo;
+  const shutterSpeed = formatExposureTime(raw.ExposureTime);
+  const focalLength = typeof raw.FocalLength === "string" ? parseFloat(raw.FocalLength) : raw.FocalLength;
+  if (raw.ISO || raw.FNumber || raw.ExposureTime || raw.FocalLength) {
+    metadata.settings = { iso: raw.ISO, aperture: raw.FNumber, shutterSpeed, focalLength };
+  }
+  if (raw.GPSLatitude != null && raw.GPSLongitude != null) {
+    metadata.gps = {
+      latitude: raw.GPSLatitude, longitude: raw.GPSLongitude,
+      altitude: typeof raw.GPSAltitude === "string" ? parseFloat(raw.GPSAltitude) : raw.GPSAltitude,
+    };
+  }
+  const dt = raw.DateTimeOriginal ?? raw.CreateDate;
+  if (dt) metadata.datetime = dt;
+  const w = raw.ExifImageWidth ?? raw.ImageWidth;
+  const h = raw.ExifImageHeight ?? raw.ImageHeight;
+  if (w && h) metadata.dimensions = { width: w, height: h };
+  return metadata;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
