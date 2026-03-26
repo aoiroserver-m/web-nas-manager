@@ -23,9 +23,10 @@ export async function GET(request: NextRequest) {
     const absolutePath = validatePath(requestedPath);
 
     // RAWファイルは埋め込みJPEGからEXIFを読む（部分読み込みで高速）
+    // CR3はISOBMFF形式のためJPEGスキャンが使えない→ファイル全体をexifrに渡す
     let parseBuffer: Buffer;
-    if (isRawFile(absolutePath)) {
-      const ext = getExtension(absolutePath);
+    const ext = getExtension(absolutePath);
+    if (isRawFile(absolutePath) && ext !== ".cr3") {
       const embedded = await extractRawJpeg(absolutePath, ext);
       if (!embedded) {
         return NextResponse.json({ metadata: null });
