@@ -165,10 +165,25 @@ export async function GET(request: NextRequest) {
         { status: 415 }
       );
     } else {
-      // 通常画像/HEIC/TIFF: sharpでリサイズ
+      // 通常画像/TIFF等: sharpでリサイズ
       const fileBuffer = await fs.readFile(absolutePath);
       const sharp = await getSharp();
-      thumbnailBuffer = await pipeThumbnail(sharp, fileBuffer, []);
+      try {
+        thumbnailBuffer = await pipeThumbnail(sharp, fileBuffer, []);
+      } catch (sharpErr) {
+        // 16-bit TIFFなどsharpが処理できない形式はffmpegでフォールバック
+        if ((ext === ".tif" || ext === ".tiff") ) {
+          const { extractVideoFrameJpeg } = await import("@/lib/videoThumbnail");
+          const frame = await extractVideoFrameJpeg(absolutePath);
+          if (frame) {
+            thumbnailBuffer = await pipeThumbnail(sharp, frame, []);
+          } else {
+            throw sharpErr;
+          }
+        } else {
+          throw sharpErr;
+        }
+      }
     }
 
     // キャッシュに保存

@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs/promises";
-import { validatePath, isNodeError, isRawFile, getExtension } from "@/lib/pathUtils";
-import { extractRawJpeg } from "@/lib/rawUtils";
+import { validatePath, isNodeError } from "@/lib/pathUtils";
 import type { ImageMetadata } from "@/types/metadata";
 
 /**
@@ -22,23 +20,11 @@ export async function GET(request: NextRequest) {
   try {
     const absolutePath = validatePath(requestedPath);
 
-    // RAWファイルは埋め込みJPEGからEXIFを読む（部分読み込みで高速）
-    // CR3はISOBMFF形式のためJPEGスキャンが使えない→ファイル全体をexifrに渡す
-    let parseBuffer: Buffer;
-    const ext = getExtension(absolutePath);
-    if (isRawFile(absolutePath) && ext !== ".cr3") {
-      const embedded = await extractRawJpeg(absolutePath, ext);
-      if (!embedded) {
-        return NextResponse.json({ metadata: null });
-      }
-      parseBuffer = embedded;
-    } else {
-      parseBuffer = await fs.readFile(absolutePath);
-    }
-
     const exifr = await import("exifr");
 
-    const exif = await exifr.default.parse(parseBuffer, {
+    // exifrはファイルパスを直接受け取れる（RAW/TIFF/HEIC含む全形式対応）
+    // 必要な部分だけ読み込むためメモリ効率が良い
+    const exif = await exifr.default.parse(absolutePath, {
       pick: [
         "Make", "Model", "LensModel",
         "ISO", "FNumber", "ExposureTime", "FocalLength",
