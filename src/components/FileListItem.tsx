@@ -129,18 +129,24 @@ export default function FileListItem({
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isFavorite, setIsFavorite] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
+  // ユーザーが星を操作した場合、遅延して戻ってくるAPIレスポンスで上書きしない
+  const userInteractedRef = useRef(false);
 
   // お気に入り・タグ状態を取得
   useEffect(() => {
+    userInteractedRef.current = false;
     fetchFileTags(itemPath).then((data) => {
-      setIsFavorite(!!data.favorite);
-      setTags(data.tags || []);
+      if (!userInteractedRef.current) {
+        setIsFavorite(!!data.favorite);
+        setTags(data.tags || []);
+      }
     }).catch(() => {});
   }, [itemPath]);
 
   const handleFavoriteClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    userInteractedRef.current = true;
     const newState = !isFavorite;
     setIsFavorite(newState);
     try {

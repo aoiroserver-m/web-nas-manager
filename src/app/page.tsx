@@ -20,36 +20,16 @@ const SCENE_IMAGES = [
   { url: "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1920&q=85", label: "Golden Wheat Field" },
 ];
 
-const SLIDE_INTERVAL = 8000;
-const TRANSITION_DURATION = 1500;
-const SCREENSAVER_TIMEOUT = 120000; // 2分
+const SLIDE_INTERVAL = 8000;   // 画像切替（ms）
+const TRANSITION_DURATION = 1500; // フェード時間（ms）
+const SCREENSAVER_TIMEOUT = 60000; // スクリーンセーバー発動（ms）
 
-// iOS Safari はバックグラウンドで setInterval を止めるため、
-// visibilitychange で再起動できるようにする
 function useTime() {
   const [now, setNow] = useState(new Date());
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const startInterval = useCallback(() => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    setNow(new Date()); // 即座に現在時刻に更新
-    intervalRef.current = setInterval(() => setNow(new Date()), 1000);
-  }, []);
-
   useEffect(() => {
-    startInterval();
-
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") startInterval();
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
-
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-    };
-  }, [startInterval]);
-
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
   return now;
 }
 
@@ -77,10 +57,11 @@ export default function Home() {
   const now = useTime();
   const greeting = getGreeting(now);
 
-  // スライドショー（レイヤー0/1を交互にクロスフェード）
+  // スライドショー
+  // layer0 / layer1 を交互に使いクロスフェード
   const [layer0, setLayer0] = useState(0);
   const [layer1, setLayer1] = useState(1);
-  const [activeLayer, setActiveLayer] = useState<0 | 1>(0);
+  const [activeLayer, setActiveLayer] = useState<0 | 1>(0); // 前面レイヤー
   const [transitioning, setTransitioning] = useState(false);
   const [progress, setProgress] = useState(0);
   const slideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -89,31 +70,36 @@ export default function Home() {
 
   // スクリーンセーバー
   const [screensaver, setScreensaver] = useState(false);
-  const [ssPos, setSsPos] = useState({ x: 50, y: 50 });
+  const [ssPos, setSsPos] = useState({ x: 50, y: 50 }); // 時計の位置（%）
   const ssTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ssPosTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const dismissScreensaver = useCallback(() => {
-    setScreensaver(false);
-  }, []);
 
   // 次の画像へ
   const goNext = useCallback(() => {
     if (transitioning) return;
     const nextIdx = nextIdxRef.current % SCENE_IMAGES.length;
     nextIdxRef.current += 1;
+
     setTransitioning(true);
     if (activeLayer === 0) {
       setLayer1(nextIdx);
       setTimeout(() => {
         setActiveLayer(1);
-        setTimeout(() => { setLayer0(nextIdx); setTransitioning(false); setProgress(0); }, TRANSITION_DURATION);
+        setTimeout(() => {
+          setLayer0(nextIdx);
+          setTransitioning(false);
+          setProgress(0);
+        }, TRANSITION_DURATION);
       }, 50);
     } else {
       setLayer0(nextIdx);
       setTimeout(() => {
         setActiveLayer(0);
-        setTimeout(() => { setLayer1(nextIdx); setTransitioning(false); setProgress(0); }, TRANSITION_DURATION);
+        setTimeout(() => {
+          setLayer1(nextIdx);
+          setTransitioning(false);
+          setProgress(0);
+        }, TRANSITION_DURATION);
       }, 50);
     }
   }, [activeLayer, transitioning]);
@@ -129,46 +115,40 @@ export default function Home() {
     setProgress(0);
     const start = Date.now();
     progressTimer.current = setInterval(() => {
-      setProgress(Math.min((Date.now() - start) / SLIDE_INTERVAL, 1));
+      const elapsed = Date.now() - start;
+      setProgress(Math.min(elapsed / SLIDE_INTERVAL, 1));
     }, 50);
     return () => { if (progressTimer.current) clearInterval(progressTimer.current); };
   }, [layer0, layer1]);
 
-  // スクリーンセーバー：非操作タイマーをリセット
+  // スクリーンセーバー：非操作で発動
   const resetSsTimer = useCallback(() => {
+    if (screensaver) setScreensaver(false);
     if (ssTimer.current) clearTimeout(ssTimer.current);
     ssTimer.current = setTimeout(() => setScreensaver(true), SCREENSAVER_TIMEOUT);
-  }, []);
+  }, [screensaver]);
 
   useEffect(() => {
-    const events = ["mousemove", "mousedown", "keydown", "touchstart", "touchend", "wheel", "pointerdown"];
-    events.forEach((e) => window.addEventListener(e, resetSsTimer, { passive: true }));
-    resetSsTimer(); // 初期タイマーセット
-
-    // バックグラウンドから戻ったらタイマーリセット
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") {
-        setScreensaver(false); // バックグラウンドから戻ったら必ず解除
-        resetSsTimer();
-      }
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-
+    const events = ["mousemove", "mousedown", "keydown", "touchstart", "wheel"];
+    events.forEach((e) => window.addEventListener(e, resetSsTimer));
+    ssTimer.current = setTimeout(() => setScreensaver(true), SCREENSAVER_TIMEOUT);
     return () => {
       events.forEach((e) => window.removeEventListener(e, resetSsTimer));
-      document.removeEventListener("visibilitychange", onVisibility);
       if (ssTimer.current) clearTimeout(ssTimer.current);
     };
   }, [resetSsTimer]);
 
-  // スクリーンセーバー：時計位置をゆっくり動かす（焼き付き防止）
+  // スクリーンセーバー：時計の位置をゆっくり動かすburnin対策
   useEffect(() => {
     if (!screensaver) {
       if (ssPosTimer.current) clearInterval(ssPosTimer.current);
       return;
     }
     ssPosTimer.current = setInterval(() => {
-      setSsPos({ x: 20 + Math.random() * 60, y: 20 + Math.random() * 60 });
+      setSsPos({
+        x: 20 + Math.random() * 60,
+        y: 20 + Math.random() * 60,
+      });
     }, 12000);
     return () => { if (ssPosTimer.current) clearInterval(ssPosTimer.current); };
   }, [screensaver]);
@@ -176,8 +156,11 @@ export default function Home() {
   const currentScene = SCENE_IMAGES[activeLayer === 0 ? layer0 : layer1];
 
   return (
-    <div className="relative h-dvh w-full overflow-hidden bg-slate-950">
-      {/* 背景レイヤー0 */}
+    <div
+      className="relative h-dvh w-full overflow-hidden bg-slate-950 cursor-default"
+      onClick={screensaver ? () => setScreensaver(false) : undefined}
+    >
+      {/* ---- 背景レイヤー0 ---- */}
       <div
         className="absolute inset-0 bg-cover bg-center transition-opacity"
         style={{
@@ -187,7 +170,7 @@ export default function Home() {
           zIndex: activeLayer === 0 ? 2 : 1,
         }}
       />
-      {/* 背景レイヤー1 */}
+      {/* ---- 背景レイヤー1 ---- */}
       <div
         className="absolute inset-0 bg-cover bg-center transition-opacity"
         style={{
@@ -197,13 +180,14 @@ export default function Home() {
           zIndex: activeLayer === 1 ? 2 : 1,
         }}
       />
-      {/* 暗幕 */}
+
+      {/* 全体に薄い暗幕 */}
       <div className="absolute inset-0 z-10 bg-black/40" />
 
-      {/* ---- 通常UI（スクリーンセーバー中は非表示だが pointer-events はオンのまま） ---- */}
+      {/* ---- 通常UI ---- */}
       <div
-        className="absolute inset-0 z-20 flex flex-col items-center justify-center px-4 py-10 transition-opacity duration-700"
-        style={{ opacity: screensaver ? 0 : 1, visibility: screensaver ? "hidden" : "visible" }}
+        className="absolute inset-0 z-20 flex flex-col items-center justify-center px-4 py-10 transition-all duration-700"
+        style={{ opacity: screensaver ? 0 : 1, pointerEvents: screensaver ? "none" : "auto" }}
       >
         {/* ロゴ + タイトル */}
         <div className="mb-6 flex flex-col items-center gap-2 text-center">
@@ -229,14 +213,17 @@ export default function Home() {
 
         {/* ストレージドライブ */}
         <div className="w-full max-w-2xl">
-          <p className="mb-2 text-center text-[10px] font-semibold uppercase tracking-widest text-white/40">Storage Drives</p>
+          <p className="mb-2 text-center text-[10px] font-semibold uppercase tracking-widest text-white/40">
+            Storage Drives
+          </p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {STORAGE_DRIVES.map((drive) => (
               <Link
                 key={drive.id}
                 href={`/files/${drive.id}`}
-                className="group relative overflow-hidden rounded-xl border border-white/10 bg-white/10 p-3 backdrop-blur-md transition-all hover:border-cyan-400/50 hover:bg-white/20 active:scale-95"
+                className="group relative overflow-hidden rounded-xl border border-white/10 bg-white/10 p-3 backdrop-blur-md transition-all hover:border-cyan-400/50 hover:bg-white/20 hover:scale-[1.03] hover:shadow-xl"
               >
+                <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity group-hover:opacity-100 bg-[radial-gradient(circle_at_50%_0%,rgba(34,211,238,0.12),transparent_70%)]" />
                 <div className="flex items-center gap-2">
                   {drive.icon === "ssd" ? (
                     <svg className="h-4 w-4 shrink-0 text-cyan-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -248,7 +235,7 @@ export default function Home() {
                     </svg>
                   )}
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-white">{drive.name}</p>
+                    <p className="truncate text-sm font-semibold text-white group-hover:text-cyan-200 transition-colors">{drive.name}</p>
                     <p className="truncate text-[10px] text-white/40">{drive.description}</p>
                   </div>
                 </div>
@@ -259,13 +246,13 @@ export default function Home() {
 
         {/* クイックアクセス */}
         <div className="mt-5 flex gap-2">
-          <Link href="/favorites" className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/60 backdrop-blur-sm transition-all hover:text-yellow-300 active:scale-95">
+          <Link href="/favorites" className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/60 backdrop-blur-sm transition-all hover:border-yellow-400/40 hover:text-yellow-300">
             <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
               <path d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" />
             </svg>
             お気に入り
           </Link>
-          <Link href="/search" className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/60 backdrop-blur-sm transition-all hover:text-cyan-300 active:scale-95">
+          <Link href="/search" className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/60 backdrop-blur-sm transition-all hover:border-cyan-400/40 hover:text-cyan-300">
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
             </svg>
@@ -274,55 +261,55 @@ export default function Home() {
         </div>
       </div>
 
-      {/* ---- スクリーンセーバーオーバーレイ ----
-           pointer-events: auto にして確実にタップを受け取る。
-           iOS Safari では div の onClick が発火しない場合があるため
-           button を使って確実に反応させる。                          */}
-      {screensaver && (
-        <button
-          className="absolute inset-0 z-40 h-full w-full cursor-default"
-          onClick={dismissScreensaver}
-          onTouchEnd={dismissScreensaver}
-          aria-label="タップして戻る"
+      {/* ---- スクリーンセーバーUI ---- */}
+      <div
+        className="pointer-events-none absolute inset-0 z-30 transition-opacity duration-1000"
+        style={{ opacity: screensaver ? 1 : 0 }}
+      >
+        {/* 時計（位置がゆっくり動く） */}
+        <div
+          className="absolute transition-all duration-[12000ms] ease-in-out"
+          style={{ left: `${ssPos.x}%`, top: `${ssPos.y}%`, transform: "translate(-50%, -50%)" }}
         >
-          {/* 時計（ゆっくり移動） */}
-          <div
-            className="absolute transition-all duration-[12000ms] ease-in-out"
-            style={{ left: `${ssPos.x}%`, top: `${ssPos.y}%`, transform: "translate(-50%, -50%)" }}
-          >
-            <p className="text-center text-sm font-light tracking-widest text-white/40 drop-shadow">
-              {formatDate(now)}
-            </p>
-            <p className="font-mono text-6xl font-thin tracking-widest text-white/80 drop-shadow-2xl tabular-nums">
-              {formatTime(now)}
-            </p>
-          </div>
-          {/* タップヒント */}
-          <p className="absolute bottom-8 left-1/2 -translate-x-1/2 text-xs tracking-widest text-white/30 animate-pulse">
-            タップして戻る
+          <p className="text-center text-sm font-light tracking-widest text-white/40 drop-shadow">
+            {formatDate(now)}
           </p>
-        </button>
-      )}
-
-      {/* 下部：撮影地ラベル + プログレスバー */}
-      {!screensaver && (
-        <div className="absolute bottom-0 left-0 right-0 z-20">
-          <div className="flex items-center justify-between px-5 pb-2">
-            <span className="text-xs tracking-widest text-white/30 uppercase">{currentScene.label}</span>
-            <button
-              onClick={goNext}
-              className="rounded-full p-1.5 text-white/30 transition-colors hover:text-white/70 active:scale-90"
-            >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
-              </svg>
-            </button>
-          </div>
-          <div className="h-px w-full bg-white/10">
-            <div className="h-full bg-white/40 transition-none" style={{ width: `${progress * 100}%` }} />
-          </div>
+          <p className="font-mono text-6xl font-thin tracking-widest text-white/80 drop-shadow-2xl tabular-nums">
+            {formatTime(now)}
+          </p>
         </div>
-      )}
+        {/* タップで戻るヒント */}
+        <p className="absolute bottom-8 left-1/2 -translate-x-1/2 text-xs tracking-widest text-white/20">
+          タップして戻る
+        </p>
+      </div>
+
+      {/* ---- 下部：撮影地ラベル + プログレスバー ---- */}
+      <div
+        className="absolute bottom-0 left-0 right-0 z-20 transition-opacity duration-700"
+        style={{ opacity: screensaver ? 0 : 1 }}
+      >
+        {/* 撮影地ラベル */}
+        <div className="flex items-center justify-between px-5 pb-2">
+          <span className="text-xs tracking-widest text-white/30 uppercase">{currentScene.label}</span>
+          <button
+            onClick={goNext}
+            className="rounded-full p-1.5 text-white/30 transition-colors hover:text-white/70"
+            title="次の画像"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+            </svg>
+          </button>
+        </div>
+        {/* プログレスバー */}
+        <div className="h-px w-full bg-white/10">
+          <div
+            className="h-full bg-white/40 transition-none"
+            style={{ width: `${progress * 100}%` }}
+          />
+        </div>
+      </div>
     </div>
   );
 }

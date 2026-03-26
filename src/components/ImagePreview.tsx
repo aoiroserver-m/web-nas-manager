@@ -22,22 +22,27 @@ export default function ImagePreview({
   onNavigate,
 }: ImagePreviewProps) {
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const thumbnailStripRef = useRef<HTMLDivElement>(null);
 
   const currentImage = images[currentIndex];
 
+  // インデックス変更時にローディング/エラー状態をリセット
+  useEffect(() => {
+    setIsLoading(true);
+    setLoadError(false);
+  }, [currentIndex]);
+
   const goNext = useCallback(() => {
     if (currentIndex < images.length - 1) {
-      setIsLoading(true);
       onNavigate(currentIndex + 1);
     }
   }, [currentIndex, images.length, onNavigate]);
 
   const goPrev = useCallback(() => {
     if (currentIndex > 0) {
-      setIsLoading(true);
       onNavigate(currentIndex - 1);
     }
   }, [currentIndex, onNavigate]);
@@ -172,20 +177,38 @@ export default function ImagePreview({
 
           {/* メイン画像 */}
           <div className="flex h-full w-full items-center justify-center p-4">
-            {isLoading && (
+            {isLoading && !loadError && (
               <div className="absolute">
                 <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
               </div>
             )}
-            <img
-              src={`/api/thumbnail?path=${encodeURIComponent(imagePath)}`}
-              alt={currentImage.name}
-              className={`max-h-full max-w-full object-contain transition-opacity duration-200 ${
-                isLoading ? "opacity-0" : "opacity-100"
-              }`}
-              onLoad={() => setIsLoading(false)}
-              draggable={false}
-            />
+            {loadError ? (
+              <div className="flex flex-col items-center gap-4 text-center">
+                <svg className="h-14 w-14 text-white/20" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                </svg>
+                <p className="text-sm text-white/40">このファイルはプレビューできません</p>
+                <a
+                  href={`/api/files/download?path=${encodeURIComponent(imagePath)}`}
+                  download={currentImage.name}
+                  className="rounded-lg bg-white/10 px-4 py-2 text-sm text-white/70 transition-colors hover:bg-white/20"
+                >
+                  ダウンロードする
+                </a>
+              </div>
+            ) : (
+              <img
+                key={imagePath}
+                src={`/api/thumbnail?path=${encodeURIComponent(imagePath)}`}
+                alt={currentImage.name}
+                className={`max-h-full max-w-full object-contain transition-opacity duration-200 ${
+                  isLoading ? "opacity-0" : "opacity-100"
+                }`}
+                onLoad={() => setIsLoading(false)}
+                onError={() => { setIsLoading(false); setLoadError(true); }}
+                draggable={false}
+              />
+            )}
           </div>
         </div>
 

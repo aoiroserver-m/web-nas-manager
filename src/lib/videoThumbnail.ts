@@ -7,11 +7,11 @@ import path from "node:path";
 const execFileAsync = promisify(execFile);
 
 function ffmpegCandidates(): string[] {
-  const base = ["ffmpeg"];
   if (process.platform === "darwin") {
-    return [...base, "/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"];
+    return ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "ffmpeg"];
   }
-  return [...base, "/usr/bin/ffmpeg"];
+  // Linux: apt install ffmpeg → /usr/bin/ffmpeg
+  return ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg", "ffmpeg"];
 }
 
 async function extractWithFfmpeg(absolutePath: string, ffmpegBin: string): Promise<Buffer | null> {
@@ -58,9 +58,9 @@ async function extractWithQlmanage(absolutePath: string): Promise<Buffer | null>
       maxBuffer: 2 * 1024 * 1024,
     });
     const files = await fs.readdir(tmp);
-    const png = files.find((f) => f.endsWith(".png"));
-    if (!png) return null;
-    const buf = await fs.readFile(path.join(tmp, png));
+    const img = files.find((f) => f.endsWith(".png") || f.endsWith(".jpg") || f.endsWith(".jpeg"));
+    if (!img) return null;
+    const buf = await fs.readFile(path.join(tmp, img));
     return buf.length > 64 ? buf : null;
   } catch {
     return null;

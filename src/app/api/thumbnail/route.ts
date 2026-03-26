@@ -107,36 +107,37 @@ export async function GET(request: NextRequest) {
       const sharp = await getSharp();
       thumbnailBuffer = await pipeThumbnail(sharp, preview, []);
     } else if (ext === ".heic" || ext === ".heif") {
-      // HEIC: 配布版sharpのlibheifがHEVC等に未対応のことがある → 埋め込みJPEG経由でサムネイル化
       const fileBuffer = await fs.readFile(absolutePath);
-      let preview: Buffer | null = null;
-
-      try {
-        const exifr = await import("exifr");
-        const thumb = await exifr.default.thumbnail(fileBuffer);
-        if (thumb && thumb.byteLength >= 100) {
-          const b = Buffer.from(thumb);
-          if (b[0] === 0xFF && b[1] === 0xD8) preview = b;
-        }
-      } catch {
-        /* exifr は HEIC によってはサムネイルを返せない */
-      }
-
-      if (!preview) {
-        preview = await extractHeicEmbeddedJpeg(absolutePath);
-      }
-
       const sharp = await getSharp();
-      if (preview) {
-        thumbnailBuffer = await pipeThumbnail(sharp, preview, [fileBuffer]);
-      } else {
-        const systemJpeg = await decodeHeicWithSystemTools(absolutePath);
-        if (systemJpeg) {
-          thumbnailBuffer = await pipeThumbnail(sharp, systemJpeg, [fileBuffer]);
+
+      // 1. sharp で直接デコード（macOS の libvips は HEIF 対応）
+      try {
+        thumbnailBuffer = await pipeThumbnail(sharp, fileBuffer, []);
+      } catch {
+        // 2. exifr の埋め込み JPEG サムネイルを試みる
+        let preview: Buffer | null = null;
+        try {
+          const exifr = await import("exifr");
+          const thumb = await exifr.default.thumbnail(fileBuffer);
+          if (thumb && thumb.byteLength >= 100) {
+            const b = Buffer.from(thumb);
+            if (b[0] === 0xFF && b[1] === 0xD8) preview = b;
+          }
+        } catch { /* exifr は HEIC によってはサムネイルを返せない */ }
+
+        // 3. ファイルバイト列から埋め込み JPEG を探す
+        if (!preview) {
+          preview = await extractHeicEmbeddedJpeg(absolutePath);
+        }
+
+        if (preview) {
+          thumbnailBuffer = await pipeThumbnail(sharp, preview, [fileBuffer]);
         } else {
-          try {
-            thumbnailBuffer = await pipeThumbnail(sharp, fileBuffer, []);
-          } catch {
+          // 4. sips / qlmanage / ffmpeg（macOS システムツール）
+          const systemJpeg = await decodeHeicWithSystemTools(absolutePath);
+          if (systemJpeg) {
+            thumbnailBuffer = await pipeThumbnail(sharp, systemJpeg, [fileBuffer]);
+          } else {
             return NextResponse.json(
               { error: "NO_PREVIEW", message: "HEIC preview not available in this environment" },
               { status: 422 }

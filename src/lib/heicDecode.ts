@@ -8,7 +8,6 @@ const execFileAsync = promisify(execFile);
 
 /**
  * macOS の sips で HEIC → JPEG 変換。
- * sips はフルパスで呼ぶ（Node.js の PATH が省略されている環境でも確実に見つかる）。
  */
 async function decodeHeicWithSips(absolutePath: string): Promise<Buffer | null> {
   if (process.platform !== "darwin") return null;
@@ -18,7 +17,7 @@ async function decodeHeicWithSips(absolutePath: string): Promise<Buffer | null> 
     await execFileAsync(
       "/usr/bin/sips",
       ["-s", "format", "jpeg", absolutePath, "--out", outPath],
-      { maxBuffer: 512 * 1024 } // stdout/stderrは数百バイト程度
+      { maxBuffer: 512 * 1024 }
     );
     const buf = await fs.readFile(outPath);
     if (buf.length > 64) return buf;
@@ -32,7 +31,6 @@ async function decodeHeicWithSips(absolutePath: string): Promise<Buffer | null> 
 
 /**
  * macOS Quick Look（qlmanage）で HEIC → PNG 変換。
- * sips が失敗した際のフォールバック。
  */
 async function decodeHeicWithQlmanage(absolutePath: string): Promise<Buffer | null> {
   if (process.platform !== "darwin") return null;
@@ -56,13 +54,43 @@ async function decodeHeicWithQlmanage(absolutePath: string): Promise<Buffer | nu
 }
 
 /**
- * ffmpeg で HEIC → JPEG（Linux / ffmpeg が入っている環境向け）。
+ * Linux の heif-convert で HEIC → JPEG 変換。
+ * sudo apt install libheif-examples でインストール可能。
+ */
+async function decodeHeicWithHeifConvert(absolutePath: string): Promise<Buffer | null> {
+  if (process.platform !== "linux") return null;
+  const candidates = ["heif-convert", "/usr/bin/heif-convert", "/usr/local/bin/heif-convert"];
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "web-nas-heic-"));
+  const outPath = path.join(tmp, "preview.jpg");
+  for (const bin of candidates) {
+    try {
+      await execFileAsync(bin, ["--version"], { maxBuffer: 4096 });
+    } catch {
+      continue;
+    }
+    try {
+      await execFileAsync(bin, [absolutePath, outPath], { maxBuffer: 512 * 1024 });
+      const buf = await fs.readFile(outPath);
+      if (buf.length > 64) {
+        return buf;
+      }
+    } catch {
+      /* 変換失敗 */
+    }
+    break;
+  }
+  await fs.rm(tmp, { recursive: true, force: true }).catch(() => {});
+  return null;
+}
+
+/**
+ * ffmpeg で HEIC → JPEG（Linux / macOS どちらでも動く）。
  */
 async function decodeHeicWithFfmpeg(absolutePath: string): Promise<Buffer | null> {
   const candidates =
     process.platform === "darwin"
       ? ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "ffmpeg"]
-      : ["/usr/bin/ffmpeg", "ffmpeg"];
+      : ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg", "ffmpeg"];
 
   for (const bin of candidates) {
     try {
@@ -92,13 +120,15 @@ async function decodeHeicWithFfmpeg(absolutePath: string): Promise<Buffer | null
 }
 
 /**
- * HEIC を OS 標準ツールで JPEG/PNG に変換して返す。
- * 優先順: sips → qlmanage → ffmpeg
+ * HEIC を OS のツールで JPEG/PNG に変換して返す。
+ * macOS: sips → qlmanage → ffmpeg
+ * Linux: heif-convert → ffmpeg
  */
 export async function decodeHeicWithSystemTools(absolutePath: string): Promise<Buffer | null> {
   return (
     (await decodeHeicWithSips(absolutePath)) ??
     (await decodeHeicWithQlmanage(absolutePath)) ??
+    (await decodeHeicWithHeifConvert(absolutePath)) ??
     (await decodeHeicWithFfmpeg(absolutePath))
   );
 }
