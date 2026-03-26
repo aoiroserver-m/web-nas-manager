@@ -40,7 +40,7 @@ export default function ContextMenu({ isOpen, onClose, items, position }: Contex
   if (!isOpen) return null;
 
   // 画面端にはみ出さないよう調整
-  const style: React.CSSProperties = {
+  const style = {
     position: "fixed",
     top: Math.min(position.y, window.innerHeight - items.length * 44 - 16),
     left: Math.min(position.x, window.innerWidth - 200),
@@ -48,7 +48,7 @@ export default function ContextMenu({ isOpen, onClose, items, position }: Contex
   };
 
   return (
-    <div ref={menuRef} style={style} className="w-48 rounded-xl border border-border bg-surface shadow-xl">
+    <div ref={menuRef} style={style as never} className="w-48 rounded-xl border border-border bg-surface shadow-xl">
       <div className="py-1">
         {items.map((item) => (
           <button

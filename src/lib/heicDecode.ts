@@ -54,6 +54,40 @@ async function decodeHeicWithQlmanage(absolutePath: string): Promise<Buffer | nu
 }
 
 /**
+ * libheif-js（WASM）で HEIC → JPEG 変換。
+ * ネイティブツール不要、Linux / macOS どちらでも動く。
+ */
+async function decodeHeicWithLibheifJs(absolutePath: string): Promise<Buffer | null> {
+  try {
+    // CJS モジュールなので .default でアクセス
+    const libheif = (await import("libheif-js")).default as typeof import("libheif-js");
+    const fileBuffer = await fs.readFile(absolutePath);
+    const decoder = new libheif.HeifDecoder();
+    const data = decoder.decode(fileBuffer);
+    if (!data || data.length === 0) return null;
+
+    const image = data[0];
+    const width: number = image.get_width();
+    const height: number = image.get_height();
+
+    const imageData = { data: new Uint8ClampedArray(width * height * 4), width, height };
+    const rgba = await new Promise<Uint8ClampedArray>((resolve, reject) => {
+      image.display(imageData, (result: { data: Uint8ClampedArray } | null) => {
+        if (!result) reject(new Error("display failed"));
+        else resolve(result.data);
+      });
+    });
+
+    const sharp = (await import("sharp")).default;
+    return sharp(Buffer.from(rgba.buffer), { raw: { width, height, channels: 4 } })
+      .jpeg({ quality: 85 })
+      .toBuffer();
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Linux の heif-convert で HEIC → JPEG 変換。
  * sudo apt install libheif-examples でインストール可能。
  */
@@ -123,6 +157,7 @@ export async function decodeHeicWithSystemTools(absolutePath: string): Promise<B
   return (
     (await decodeHeicWithSips(absolutePath)) ??
     (await decodeHeicWithQlmanage(absolutePath)) ??
+    (await decodeHeicWithLibheifJs(absolutePath)) ??
     (await decodeHeicWithHeifConvert(absolutePath)) ??
     (await decodeHeicWithFfmpeg(absolutePath))
   );

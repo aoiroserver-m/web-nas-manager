@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SignJWT, jwtVerify } from "jose";
+import { TOTP, NobleCryptoPlugin, ScureBase32Plugin, generateSecret, verify } from "otplib";
 
 const SESSION_COOKIE = "nas-session";
+const crypto = new NobleCryptoPlugin();
+const base32 = new ScureBase32Plugin();
 
 function getSecret(): Uint8Array {
-  const s = process.env.SESSION_SECRET || process.env.ACCESS_PASSCODE || "fallback-secret";
+  const s = process.env.SESSION_SECRET || process.env.TOTP_SECRET || "fallback-secret";
   return new TextEncoder().encode(s);
 }
 
@@ -13,10 +16,13 @@ function getSessionDurationMs(): number {
   return hours * 60 * 60 * 1000;
 }
 
+function isTotpEnabled(): boolean {
+  return !!process.env.TOTP_SECRET;
+}
+
 /** セッションが有効かどうか確認する */
 export async function GET(request: NextRequest) {
-  // パスコード未設定 → 保護なし（常に有効扱い）
-  if (!process.env.ACCESS_PASSCODE) {
+  if (!isTotpEnabled()) {
     return NextResponse.json({ valid: true });
   }
 
@@ -31,33 +37,35 @@ export async function GET(request: NextRequest) {
   }
 }
 
-/** パスコードを検証してセッション Cookie をセットする */
+/** TOTPコードを検証してセッション Cookie をセット */
 export async function POST(request: NextRequest) {
   try {
     const { code } = await request.json();
-    const expected = process.env.ACCESS_PASSCODE;
 
-    if (!expected) {
-      // パスコード未設定 → そのまま通す
+    if (!isTotpEnabled()) {
       return NextResponse.json({ success: true });
     }
 
-    if (code !== expected) {
+    const secret = process.env.TOTP_SECRET!;
+    const token = String(code).replace(/\s/g, "");
+    const result = await verify({ token, secret, crypto, base32 });
+
+    if (!result.valid) {
       return NextResponse.json(
-        { error: "INVALID_CODE", message: "パスコードが違います" },
+        { error: "INVALID_CODE", message: "コードが違います" },
         { status: 401 }
       );
     }
 
     const expiresAt = new Date(Date.now() + getSessionDurationMs());
-    const token = await new SignJWT({})
+    const jwt = await new SignJWT({})
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()
       .setExpirationTime(expiresAt)
       .sign(getSecret());
 
     const res = NextResponse.json({ success: true });
-    res.cookies.set(SESSION_COOKIE, token, {
+    res.cookies.set(SESSION_COOKIE, jwt, {
       httpOnly: true,
       sameSite: "lax",
       expires: expiresAt,

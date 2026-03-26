@@ -9,7 +9,7 @@ import { MAX_UPLOAD_SIZE } from "@/lib/constants";
  */
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData();
+    const formData = await request.formData() as unknown as { get(name: string): FormDataEntryValue | null };
     const file = formData.get("file") as File | null;
     const targetPath = formData.get("path") as string | null;
 

@@ -4,13 +4,13 @@ import { jwtVerify } from "jose";
 const SESSION_COOKIE = "nas-session";
 
 function getSecret(): Uint8Array {
-  const s = process.env.SESSION_SECRET || process.env.ACCESS_PASSCODE || "fallback-secret";
+  const s = process.env.SESSION_SECRET || process.env.TOTP_SECRET || "fallback-secret";
   return new TextEncoder().encode(s);
 }
 
-/** パスコードが設定されているか（未設定なら保護しない） */
+/** TOTP が設定されているか（未設定なら保護しない） */
 function isPasscodeEnabled(): boolean {
-  return !!process.env.ACCESS_PASSCODE;
+  return !!process.env.TOTP_SECRET;
 }
 
 /** 認証不要のパス */
