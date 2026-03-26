@@ -12,6 +12,14 @@ export const DATA_ROOT = process.env.DATA_ROOT || "/data";
 export const THUMBNAIL_CACHE_DIR = process.env.THUMBNAIL_CACHE_DIR || "/cache/thumbnails";
 
 /**
+ * Path to the tags/favorites JSON database file.
+ * Defaults to DATA_ROOT/.web-nas-tags.json
+ */
+export const TAGS_DB_PATH =
+  process.env.TAGS_DB_PATH ||
+  (process.env.DATA_ROOT ? `${process.env.DATA_ROOT}/.web-nas-tags.json` : "/data/.web-nas-tags.json");
+
+/**
  * Maximum upload file size (2GB).
  */
 export const MAX_UPLOAD_SIZE = 2 * 1024 * 1024 * 1024;

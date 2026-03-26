@@ -1,6 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
-import { DATA_ROOT } from "./constants";
+import { TAGS_DB_PATH } from "./constants";
 
 /**
  * File tags/favorites metadata.
@@ -19,8 +19,7 @@ export interface TagsDatabase {
   [filePath: string]: FileTagData;
 }
 
-// DBファイルのパス（DATA_ROOT配下に保存）
-const DB_PATH = path.join(DATA_ROOT, ".web-nas-tags.json");
+const DB_PATH = TAGS_DB_PATH;
 
 let cachedDb: TagsDatabase | null = null;
 
@@ -45,6 +44,7 @@ export async function loadTagsDb(): Promise<TagsDatabase> {
  */
 export async function saveTagsDb(db: TagsDatabase): Promise<void> {
   cachedDb = db;
+  await fs.mkdir(path.dirname(DB_PATH), { recursive: true });
   await fs.writeFile(DB_PATH, JSON.stringify(db, null, 2), "utf-8");
 }
 
