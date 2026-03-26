@@ -41,6 +41,8 @@ function formatDate(isoDate: string): string {
 }
 
 function FileIcon({ item }: { item: FileInfo }) {
+  const [imgError, setImgError] = useState(false);
+
   if (item.type === "directory") {
     return (
       <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
@@ -61,7 +63,7 @@ function FileIcon({ item }: { item: FileInfo }) {
     );
   }
 
-  if (item.thumbnailUrl && (item.isImage || item.isVideo)) {
+  if (item.thumbnailUrl && (item.isImage || item.isVideo) && !imgError) {
     return (
       <div className="h-10 w-10 overflow-hidden rounded-lg bg-surface-hover">
         <img
@@ -69,6 +71,7 @@ function FileIcon({ item }: { item: FileInfo }) {
           alt=""
           className="h-full w-full object-cover"
           loading="lazy"
+          onError={() => setImgError(true)}
         />
       </div>
     );

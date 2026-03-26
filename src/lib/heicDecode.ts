@@ -7,50 +7,98 @@ import path from "node:path";
 const execFileAsync = promisify(execFile);
 
 /**
- * HEIC を OS 標準ツールで JPEG に落とす（sharp の libheif が不足している環境向け）。
- * - macOS: sips（ほぼ確実）
- * - その他: ffmpeg が PATH にあれば試行
+ * macOS の sips で HEIC → JPEG 変換。
+ * sips はフルパスで呼ぶ（Node.js の PATH が省略されている環境でも確実に見つかる）。
  */
-export async function decodeHeicWithSystemTools(absolutePath: string): Promise<Buffer | null> {
-  if (process.platform === "darwin") {
-    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "web-nas-heic-"));
-    const outPath = path.join(tmp, "preview.jpg");
+async function decodeHeicWithSips(absolutePath: string): Promise<Buffer | null> {
+  if (process.platform !== "darwin") return null;
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "web-nas-heic-"));
+  const outPath = path.join(tmp, "preview.jpg");
+  try {
+    await execFileAsync(
+      "/usr/bin/sips",
+      ["-s", "format", "jpeg", absolutePath, "--out", outPath],
+      { maxBuffer: 512 * 1024 } // stdout/stderrは数百バイト程度
+    );
+    const buf = await fs.readFile(outPath);
+    if (buf.length > 64) return buf;
+  } catch {
+    /* sips 失敗（権限・破損ファイルなど） */
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true }).catch(() => {});
+  }
+  return null;
+}
+
+/**
+ * macOS Quick Look（qlmanage）で HEIC → PNG 変換。
+ * sips が失敗した際のフォールバック。
+ */
+async function decodeHeicWithQlmanage(absolutePath: string): Promise<Buffer | null> {
+  if (process.platform !== "darwin") return null;
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "web-nas-ql-"));
+  try {
+    await execFileAsync(
+      "/usr/bin/qlmanage",
+      ["-t", "-s", "1024", "-o", tmp, absolutePath],
+      { maxBuffer: 2 * 1024 * 1024 }
+    );
+    const files = await fs.readdir(tmp);
+    const img = files.find((f) => f.endsWith(".png") || f.endsWith(".jpg") || f.endsWith(".jpeg"));
+    if (!img) return null;
+    const buf = await fs.readFile(path.join(tmp, img));
+    return buf.length > 64 ? buf : null;
+  } catch {
+    return null;
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/**
+ * ffmpeg で HEIC → JPEG（Linux / ffmpeg が入っている環境向け）。
+ */
+async function decodeHeicWithFfmpeg(absolutePath: string): Promise<Buffer | null> {
+  const candidates =
+    process.platform === "darwin"
+      ? ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "ffmpeg"]
+      : ["/usr/bin/ffmpeg", "ffmpeg"];
+
+  for (const bin of candidates) {
     try {
-      await execFileAsync("sips", ["-s", "format", "jpeg", absolutePath, "--out", outPath], {
-        maxBuffer: 10 * 1024 * 1024,
-      });
-      const buf = await fs.readFile(outPath);
-      if (buf.length > 64) return buf;
+      await execFileAsync(bin, ["-version"], { maxBuffer: 4096 });
     } catch {
-      /* sips 失敗（権限・破損ファイルなど） */
-    } finally {
-      await fs.rm(tmp, { recursive: true, force: true }).catch(() => {});
+      continue;
+    }
+    try {
+      const { stdout } = await execFileAsync(
+        bin,
+        [
+          "-hide_banner", "-loglevel", "error",
+          "-i", absolutePath,
+          "-vframes", "1",
+          "-f", "image2pipe",
+          "-vcodec", "mjpeg",
+          "-",
+        ],
+        { maxBuffer: 40 * 1024 * 1024 }
+      );
+      if (Buffer.isBuffer(stdout) && stdout.length > 64) return stdout;
+    } catch {
+      /* デコーダ不足など */
     }
   }
-
-  try {
-    const { stdout } = await execFileAsync(
-      "ffmpeg",
-      [
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-i",
-        absolutePath,
-        "-vframes",
-        "1",
-        "-f",
-        "image2pipe",
-        "-vcodec",
-        "mjpeg",
-        "-",
-      ],
-      { maxBuffer: 40 * 1024 * 1024 }
-    );
-    if (Buffer.isBuffer(stdout) && stdout.length > 64) return stdout;
-  } catch {
-    /* ffmpeg なし / HEIC デコーダなし */
-  }
-
   return null;
+}
+
+/**
+ * HEIC を OS 標準ツールで JPEG/PNG に変換して返す。
+ * 優先順: sips → qlmanage → ffmpeg
+ */
+export async function decodeHeicWithSystemTools(absolutePath: string): Promise<Buffer | null> {
+  return (
+    (await decodeHeicWithSips(absolutePath)) ??
+    (await decodeHeicWithQlmanage(absolutePath)) ??
+    (await decodeHeicWithFfmpeg(absolutePath))
+  );
 }

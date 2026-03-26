@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { FileInfo } from "@/types/files";
 
 interface FileGridItemProps {
@@ -25,6 +25,7 @@ export default function FileGridItem({
 }: FileGridItemProps) {
   const itemPath = [currentPath, item.name].filter(Boolean).join("/");
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [imgError, setImgError] = useState(false);
 
   const handleTouchStart = useCallback(
     (_e: React.TouchEvent) => {
@@ -108,12 +109,13 @@ export default function FileGridItem({
         isSelected ? "ring-2 ring-primary ring-offset-1" : ""
       }`}
     >
-      {item.thumbnailUrl && (item.isImage || item.isVideo) ? (
+      {item.thumbnailUrl && (item.isImage || item.isVideo) && !imgError ? (
         <img
           src={item.thumbnailUrl}
           alt=""
           className="h-full w-full object-cover"
           loading="lazy"
+          onError={() => setImgError(true)}
         />
       ) : item.type === "directory" ? (
         <div className="flex h-full items-center justify-center">
