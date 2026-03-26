@@ -10,7 +10,15 @@ const base32 = new ScureBase32Plugin();
  * TOTP_SECRET が未設定なら新しいシークレットを生成して返す。
  * 設定済みなら Authenticator 用 QR コードを返す。
  */
-export async function GET() {
+export async function GET(request: Request) {
+  const passcode = process.env.ACCESS_PASSCODE;
+  if (passcode) {
+    const { searchParams } = new URL(request.url);
+    if (searchParams.get("passcode") !== passcode) {
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    }
+  }
+
   const secret = process.env.TOTP_SECRET;
 
   if (!secret) {
