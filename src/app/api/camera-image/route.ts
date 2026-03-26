@@ -82,15 +82,22 @@ async function fetchDuckDuckGoImage(query: string): Promise<string | null> {
       "dpreview.com",
     ];
 
+    const isUsable = (url: string) =>
+      url.startsWith("http") &&
+      !url.endsWith(".svg") &&
+      !url.includes(".svg?") &&
+      !url.toLowerCase().includes("logo") &&
+      !url.toLowerCase().includes("icon");
+
     const preferred = results.slice(0, 20).find(r =>
-      r.image?.startsWith("http") &&
+      isUsable(r.image ?? "") &&
       PREFERRED_DOMAINS.some(d => r.image.includes(d))
     );
     if (preferred) return preferred.image;
 
-    // 優先ドメインになければ最初の有効な URL
-    for (const r of results.slice(0, 5)) {
-      if (r.image && r.image.startsWith("http")) return r.image;
+    // 優先ドメインになければ最初の使えるURL
+    for (const r of results.slice(0, 10)) {
+      if (isUsable(r.image ?? "")) return r.image;
     }
     return null;
   } catch {
@@ -122,7 +129,12 @@ async function fetchWikipediaImage(query: string): Promise<string | null> {
       query: { pages: Record<string, { thumbnail?: { source: string } }> };
     };
 
-    return imageData.query?.pages?.[String(pageId)]?.thumbnail?.source ?? null;
+    const source = imageData.query?.pages?.[String(pageId)]?.thumbnail?.source ?? null;
+    // SVGロゴは除外
+    if (source && (source.endsWith(".svg") || source.includes(".svg?") || source.toLowerCase().includes("logo"))) {
+      return null;
+    }
+    return source;
   } catch {
     return null;
   }
