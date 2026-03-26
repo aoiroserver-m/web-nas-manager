@@ -74,10 +74,13 @@ export async function extractRawJpeg(filePath: string, ext: string): Promise<Buf
       }
     }
 
-    // その他のRAW: 先頭部分（最大20MB）からJPEGを探す
-    // ほとんどのRAWフォーマットは先頭付近に埋め込みJPEGがある
-    const SCAN_SIZE = 20 * 1024 * 1024;
-    const scanBuf = await readRange(filePath, 0, SCAN_SIZE);
+    // その他のRAW: 先頭部分からJPEGを探す
+    // CR3(Canon RAW 3)はISOBMFF形式でJPEGが後半にあることがあるため40MBまでスキャン
+    const isCR3 = ext === ".cr3";
+    const SCAN_SIZE = isCR3 ? 40 * 1024 * 1024 : 20 * 1024 * 1024;
+    const fileStat = await import("fs/promises").then(m => m.stat(filePath));
+    const actualSize = Math.min(SCAN_SIZE, fileStat.size);
+    const scanBuf = await readRange(filePath, 0, actualSize);
     return findLargestJpegInBuffer(scanBuf, 10240);
   } catch {
     return null;
